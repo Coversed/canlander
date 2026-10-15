@@ -32,7 +32,7 @@ tbody tr:hover,tbody tr.sel{background:var(--hi)}
 .strip i{width:3px}
 .strip i.d,.bars i.d{background:var(--drop)}
 .bars{display:flex;align-items:flex-end;gap:3px;height:140px;border-bottom:1px solid var(--line)}
-.bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;height:100%;min-width:0}
+.bars>div,.bars>a{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;height:100%;min-width:0}
 .bars i{width:100%}
 .dates{display:flex;gap:3px;font-size:9px;color:var(--mute)}
 .dates span{flex:1;text-align:center;overflow:hidden}
@@ -42,6 +42,11 @@ tbody tr:hover,tbody tr.sel{background:var(--hi)}
 .key{font-size:12px;color:var(--mute);margin-top:8px}
 .key u{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--count);text-decoration:none;vertical-align:-1px}
 .key u.d{background:var(--drop)}
+.bars a{text-decoration:none}
+.bars a:hover i{opacity:.7}
+.chip{display:inline-flex;flex-direction:column;border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin:0 6px 6px 0;color:var(--ink);text-decoration:none}
+a.chip:hover{background:var(--hi);border-color:var(--count)}
+.chip small{color:var(--mute);font-size:11px}
 .foot{color:var(--mute);font-size:12px}
 :focus-visible{outline:2px solid var(--count);outline-offset:2px}
 </style>
@@ -73,6 +78,12 @@ tbody tr:hover,tbody tr.sel{background:var(--hi)}
   <div class="dates" id="attd"></div>
 </section>
 
+<section class="panel" id="wk" hidden>
+  <h2>Results by week</h2>
+  <div id="weeks"></div>
+  <p class="key">Each date opens that night's results post.</p>
+</section>
+
 <p class="foot" id="foot"></p>
 </main>
 
@@ -81,6 +92,9 @@ tbody tr:hover,tbody tr.sel{background:var(--hi)}
    1. In Google Sheets: File > Share > Publish to web > pick your results tab, choose "Comma-separated values (.csv)", Publish.
    2. Paste the link between the quotes below. Leave it empty to see the built-in demo snapshot. */
 const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSK2YOnU1Rt3uZpEOI-sPSQGnpnNf_nnLA_9Tn8N-ou1zYYmbPxkBGH8Q8hpoRIzFXZ4yllj31ZbRlN/pub?gid=1095806745&single=true&output=csv";
+
+/* Optional: paste your Apps Script web app link here to read the hyperlinks behind the "Link" cells. */
+const LINKS_API_URL = "https://script.google.com/macros/s/AKfycby79gR3VoCG60BFNiC3AbM0f0awxvbaGCkx6HQ818ifHHzOCZiFiV1FtMHvB_3c_QVo/exec";
 
 /* ---------- Demo snapshot (used only when SHEET_CSV_URL is empty) ---------- */
 const W = s => s.split(",").map(v => v.trim() === "" ? null : +v);
@@ -136,7 +150,7 @@ function demoData(){
     return {rank:i+1,name,score:+score,played:+played,mw:+mw,wins:+wins,low:+low,
             weeks: DEMO_WEEKLY[name] ? W(DEMO_WEEKLY[name]) : null};
   });
-  return {title:"2026 Dice Cup Canlander", dates:DEMO_DATES, counts:DEMO_COUNTS, players, demo:true};
+  return {title:"2026 Dice Cup Canlander", dates:DEMO_DATES, counts:DEMO_COUNTS, links:[], players, demo:true};
 }
 
 /* ---------- Live data: read the published CSV ---------- */
@@ -164,6 +178,8 @@ function liveData(text){
   let n=dates.length; while(n>0&&!dates[n-1]) n--;
   dates=dates.slice(0,n);
   const counts=cntRow.slice(ws,ws+n).map(v=>+v||0);
+  const linkRow=rows.find(r=>r.slice(ws,ws+n).some(c=>/^https?:\/\//i.test(c.trim())));
+  const links=linkRow?linkRow.slice(ws,ws+n).map(c=>/^https?:\/\//i.test(c.trim())?c.trim():""):[];
   const players=[];
   for(const r of rows.slice(hi+1)){
     if(!/^\d+$/.test((r[0]||"").trim())||!(r[1]||"").trim()) continue;
@@ -171,7 +187,7 @@ function liveData(text){
       mw:parseFloat(r[4])||0,wins:+r[5]||0,low:+r[6]||0,
       weeks:r.slice(ws,ws+n).map(v=>v.trim()===""?null:+v)});
   }
-  return {title:(rows[0][0]||"").trim()||"Canlander", dates, counts, players, demo:false};
+  return {title:(rows[0][0]||"").trim()||"Canlander", dates, counts, links, players, demo:false};
 }
 
 /* ---------- Best-20 logic ---------- */
@@ -210,7 +226,7 @@ function renderDetail(){
     body=`<div class="stats"><div><b>${p.score}</b><span>Best 20 total</span></div>
       <div><b>${p.played}</b><span>Weeks played</span></div><div><b>${p.mw}%</b><span>Match win rate</span></div>
       <div><b>${p.wins}</b><span>4-0 nights</span></div><div><b>${form}</b><span>Average of last 5</span></div></div>
-      <div class="bars">${p.weeks.map((v,i)=>`<div title="${D.dates[i]||""}: ${v===null?"did not play":v}">${v===null?"":`<i class="${keep.has(i)?"":"d"}" style="height:${v/12*100}%"></i>`}</div>`).join("")}</div>
+      <div class="bars">${p.weeks.map((v,i)=>`<div title="${fd(D.dates[i]||"")}: ${v===null?"did not play":v}">${v===null?"":`<i class="${keep.has(i)?"":"d"}" style="height:${v/12*100}%"></i>`}</div>`).join("")}</div>
       <div class="dates">${D.dates.map(d=>`<span>${d.slice(0,2)}</span>`).join("")}</div>
       <p class="key"><u></u> counts &nbsp; <u class="d"></u> dropped. Bar height is the week's score out of 12.</p>`;
   }
@@ -218,8 +234,23 @@ function renderDetail(){
 }
 function renderAttendance(){
   const max=Math.max(...D.counts,1);
-  $("att").innerHTML=D.counts.map((c,i)=>c?`<div title="${D.dates[i]}: ${c} players"><i style="height:${c/max*100}%"></i></div>`:'<div></div>').join("");
+  $("att").innerHTML=D.counts.map((c,i)=>{
+    if(!c) return '<div></div>';
+    const t=`title="${fd(D.dates[i])}: ${c} players"`, bar=`<i style="height:${c/max*100}%"></i>`, l=(D.links||[])[i];
+    return l?`<a ${t} href="${esc(l)}" target="_blank" rel="noopener">${bar}</a>`:`<div ${t}>${bar}</div>`;
+  }).join("");
   $("attd").innerHTML=D.dates.map(d=>`<span>${d.slice(0,2)}</span>`).join("");
+}
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fd(d){const m=/^(\d{1,2})\/(\d{1,2})/.exec(d);return m?(+m[1])+" "+MON[+m[2]-1]:d;}
+function renderWeeks(){
+  const L=D.links||[];
+  $("wk").hidden=!L.some(Boolean);
+  $("weeks").innerHTML=D.dates.map((d,i)=>{
+    if(!(D.counts[i]>0)) return "";
+    const inner=`${fd(d)}<small>${D.counts[i]} players</small>`;
+    return L[i]?`<a class="chip" href="${esc(L[i])}" target="_blank" rel="noopener">${inner}</a>`:`<span class="chip">${inner}</span>`;
+  }).join("");
 }
 function paint(d){
   D=d;
@@ -230,7 +261,7 @@ function paint(d){
     $("banner").textContent="Showing a demo snapshot with weekly detail for the top 8. Set SHEET_CSV_URL in this file to go live with every player."; }
   else $("banner").hidden=true;
   $("foot").textContent=D.demo?"Demo data":"Loaded from the published sheet at "+new Date().toLocaleTimeString();
-  renderRows(); renderDetail(); renderAttendance();
+  renderRows(); renderDetail(); renderAttendance(); renderWeeks();
 }
 
 $("q").addEventListener("input",renderRows);
@@ -247,7 +278,14 @@ $("rows").addEventListener("keydown",e=>{ if(e.key==="Enter") pick(e); });
   try{
     const res=await fetch(SHEET_CSV_URL,{cache:"no-store"});
     if(!res.ok) throw new Error("HTTP "+res.status);
-    paint(liveData(await res.text()));
+    const d=liveData(await res.text());
+    if(LINKS_API_URL && !(d.links||[]).some(Boolean)){
+      try{
+        const j=await (await fetch(LINKS_API_URL)).json();
+        d.links=(j.links||[]).slice(0,d.dates.length).map(u=>/^https?:\/\//i.test(u)?u:"");
+      }catch(e){ console.warn("Couldn't load result links:",e); }
+    }
+    paint(d);
   }catch(err){
     paint(demoData());
     $("banner").hidden=false;
