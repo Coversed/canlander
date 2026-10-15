@@ -260,7 +260,7 @@ function paint(d){
   if(D.demo){ $("banner").hidden=false;
     $("banner").textContent="Showing a demo snapshot with weekly detail for the top 8. Set SHEET_CSV_URL in this file to go live with every player."; }
   else $("banner").hidden=true;
-  $("foot").textContent=D.demo?"Demo data":"Loaded from the published sheet at "+new Date().toLocaleTimeString();
+  $("foot").textContent=D.demo?"Demo data":"Loaded from the published sheet at "+new Date().toLocaleTimeString()+(D.linkNote?". "+D.linkNote:"");
   renderRows(); renderDetail(); renderAttendance(); renderWeeks();
 }
 
@@ -283,7 +283,8 @@ $("rows").addEventListener("keydown",e=>{ if(e.key==="Enter") pick(e); });
       try{
         const j=await (await fetch(LINKS_API_URL)).json();
         d.links=(j.links||[]).slice(0,d.dates.length).map(u=>/^https?:\/\//i.test(u)?u:"");
-      }catch(e){ console.warn("Couldn't load result links:",e); }
+        if(!d.links.some(Boolean)) d.linkNote="The link script replied but contained no addresses.";
+      }catch(e){ console.warn("Couldn't load result links:",e); d.linkNote="Result links didn't load ("+e.message+"). Check the script is deployed with access set to Anyone."; }
     }
     paint(d);
   }catch(err){
