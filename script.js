@@ -73,10 +73,10 @@ const PLAYER_CARDS = {
   "Aaron Rubra":            "Barrowgoyf",
   "Jennifer Bytheway":      "Ornery Tumblewagg",
   "Matt Ellis":             "Troll of Khazadum",
-  "Philip":                 "",
+  "Philip":                 "Jacked Rabbit",
   "Summer Wright":          "Kumena, Tyrant of Orazca",
   "Thomas Cheslin":         "Golgari grave troll",
-  "Zack Ibell":             "",
+  "Zack Ibell":             "Faithless looting",
   "Michael Boardman":       "Simic growth chamber",
 };
 
