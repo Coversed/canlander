@@ -249,9 +249,13 @@ function drawPlayer() {
   // One bar per week. If the week has a Discord link, the bar becomes a clickable link.
   let bars = "";
   player.weeks.forEach((score, i) => {
-    if (score === null) { bars += '<div class="slot"></div>'; return; }
+    if (score === null) {
+      bars += `<div class="slot" title="${formatDate(season.dates[i])}: did not play"></div>`;
+      return;
+    }
 
-    const height = (score / MAX_SCORE) * 100;
+    // Math.max makes sure even a score of 0 gets a small visible stub (3% of the chart height)
+    const height = Math.max((score / MAX_SCORE) * 100, 3);
     const className = counted.has(i) ? "" : "dropped";
     const bar = `<i class="${className}" style="height:${height}%"></i>`;
     const title = formatDate(season.dates[i]) + ": " + score;
