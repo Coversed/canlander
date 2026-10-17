@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!-- index.html: the STRUCTURE of the page. It says what is on the page, not how it looks or behaves. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Makes the page fit properly on phones -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canlander Leaderboard</title>
+  <!-- Load the looks (style.css) -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <main>
+    <h1 id="title">Canlander Leaderboard</h1>
+    <p id="subtitle"></p>
+    <!-- Shown only if something goes wrong. "hidden" keeps it out of sight until needed. -->
+    <p id="message" hidden></p>
+
+    <!-- Each "card" is one white box on the page -->
+    <section class="card">
+      <h2>Leaderboard</h2>
+      <input id="search" type="search" placeholder="Search players">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <!-- data-sort tells our JavaScript which column to sort by when clicked -->
+              <th data-sort="rank">#</th>
+              <th data-sort="name">Player</th>
+              <th data-sort="score">Score</th>
+              <th data-sort="played">Played</th>
+              <th data-sort="winRate">MW%</th>
+              <th data-sort="wins">4-0s</th>
+              <th>Season</th>
+            </tr>
+          </thead>
+          <!-- Empty for now: JavaScript fills in one row per player -->
+          <tbody id="leaderboard"></tbody>
+        </table>
+      </div>
+      <p class="note">Teal bars count towards a player's best 20. Grey bars are dropped. Click a player to see their season.</p>
+    </section>
+
+    <section class="card" id="player-card" hidden></section>
+
+    <section class="card" id="weeks-card" hidden>
+      <h2>Results by week</h2>
+      <div id="weeks"></div>
+      <p class="note">Each date opens that night's results post.</p>
+    </section>
+
+    <p id="footer"></p>
+  </main>
+
+  <!-- Load the behaviour (script.js). It goes last so the page above exists before the script runs. -->
+  <script src="script.js"></script>
+</body>
+</html>

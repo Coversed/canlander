@@ -1,0 +1,132 @@
+/* style.css: how the page LOOKS.
+   Each block is: selector { property: value; }
+   The selector says WHAT to style, and the properties say HOW. */
+
+/* Colours are stored as variables so you can change the whole theme in one place.
+   Try changing --counted to a different colour and refreshing. */
+:root {
+  --background: #eef1f4;
+  --card: #ffffff;
+  --text: #14202b;
+  --muted: #6b7a89;
+  --border: #d9e0e7;
+  --counted: #0f766e;
+  --dropped: #c3ccd5;
+  --gold: #c8962b;
+  --highlight: #e3f1ef;
+}
+
+/* If the visitor's device is in dark mode, swap in darker colours */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f161d;
+    --card: #18222c;
+    --text: #e8eef3;
+    --muted: #8d9cab;
+    --border: #2a3743;
+    --counted: #3cc4b5;
+    --dropped: #3a4856;
+    --gold: #e0b04a;
+    --highlight: #1d3335;
+  }
+}
+
+/* Make widths include padding, which avoids surprise overflow */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font: 15px/1.5 system-ui, sans-serif;
+}
+
+main {
+  max-width: 1040px;
+  margin: 0 auto;        /* centres the content */
+  padding: 28px 16px 60px;
+}
+
+h1 { font-size: 36px; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 0 0 10px; }
+
+#subtitle, .note, #footer { color: var(--muted); font-size: 13px; }
+
+#message {
+  background: var(--highlight);
+  border: 1px solid var(--counted);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+/* The white boxes */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  width: 100%;
+  max-width: 280px;
+  margin-bottom: 10px;
+}
+
+/* Lets the table scroll sideways on small screens */
+.table-wrap { overflow-x: auto; }
+
+table { border-collapse: collapse; width: 100%; min-width: 640px; }
+th, td {
+  padding: 7px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th { color: var(--muted); cursor: pointer; }
+/* The 2nd column (player names) is left-aligned */
+th:nth-child(2), td:nth-child(2) { text-align: left; font-weight: 600; }
+tbody tr { cursor: pointer; }
+tbody tr:hover, tbody tr.selected { background: var(--highlight); }
+.gold { color: var(--gold); font-weight: 800; }
+
+/* Tiny bar chart inside each leaderboard row */
+.strip { display: inline-flex; align-items: flex-end; gap: 1px; height: 20px; }
+.strip i { width: 3px; background: var(--counted); }
+
+/* Big bar chart on a player's card */
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 140px; border-bottom: 1px solid var(--border); }
+.slot { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.bars i { display: block; width: 100%; background: var(--counted); border-radius: 1px; }
+.bars a:hover i { opacity: 0.7; }
+
+/* A bar for a result that doesn't count */
+i.dropped { background: var(--dropped); }
+
+.day-labels { display: flex; gap: 3px; font-size: 9px; color: var(--muted); }
+.day-labels span { flex: 1; text-align: center; }
+
+.stats { display: flex; flex-wrap: wrap; gap: 22px; margin-bottom: 14px; }
+.stats b { display: block; font-size: 24px; }
+.stats span { color: var(--muted); font-size: 13px; }
+
+/* The little date boxes in "Results by week" */
+.week-box {
+  display: inline-flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 0 6px 6px 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.week-box:hover { background: var(--highlight); border-color: var(--counted); }
+.week-box small { color: var(--muted); font-size: 11px; }
