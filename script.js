@@ -6,10 +6,10 @@
 // The only things you should ever need to change are in this section.
 
 // Your published Google Sheet (CSV format)
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSK2YOnU1Rt3uZpEOI-sPSQGnpnNf_nnLA_9Tn8N-ou1zYYmbPxkBGH8Q8hpoRIzFXZ4yllj31ZbRlN/pub?gid=1095806745&single=true&output=csv";
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSYeTe-iIN0az5b5fHbg1PutxX6ZhPcr83r06TGpAS3wriBFHpsE_4NIXo__N0O4SBENSI0ePQJCnWP/pub?gid=0&single=true&output=csv";
 
 // Your Apps Script address, which reads the hyperlinks behind the "Link" cells
-const LINKS_API_URL = "https://script.google.com/macros/s/AKfycby79gR3VoCG60BFNiC3AbM0f0awxvbaGCkx6HQ818ifHHzOCZiFiV1FtMHvB_3c_QVo/exec";
+const LINKS_API_URL = "https://script.google.com/macros/s/AKfycbxtKV8TNZT1opGsSZUSgHDVLU1Top-01sFGhl_o4B-xPdwi_4wGNhCxe8zXhB2vCvI/exec";
 
 // Backup Discord links, used if the script above can't be reached.
 // Every address starts the same way, so we only store the unique ending of each one.
