@@ -79,7 +79,7 @@ const PLAYER_CARDS = {
   "Zack Ibell":             "",
   "Michael Boardman":       "Simic growth chamber",
 };
-};
+
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
