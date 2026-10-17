@@ -30,8 +30,8 @@ const BACKUP_LINK_IDS = [
 const BEST_RESULTS_COUNTED = 20;   // only each player's best 20 scores count
 const MAX_SCORE = 12;              // a 4-0 night is worth 12 points
 // Each player's signature card, shown beside their name.
-// The name on the left must match the sheet exactly. The card on the right can be any Magic card.
-// These three are PLACEHOLDERS, so replace them with the real ones. Players not listed get no picture.
+// Type a Magic card name between the empty quotes. Leave it as "" and that player gets no picture.
+// The names on the left must match the sheet exactly. For a new player, add a line in the same format.
 const PLAYER_CARDS = {
   "Ember Smithers":         "Screaming Nemesis",
   "Helena Jackson":         "Elixir of Immortality",
@@ -67,19 +67,18 @@ const PLAYER_CARDS = {
   "Lucy Adams":             "Shallow Grave",
   "Cass Taylor":            "Simulacrum Synthesiser",
   "Maia":                   "Pteromander",
-  "Rory":                   "Conspicous snoop",
+  "Rory":                   "Conspicuous Snoop",
   "Cherie":                 "Faithful Watchdog",
   "Ruben":                  "Teferi, hero of dominaria",
   "Aaron Rubra":            "Barrowgoyf",
   "Jennifer Bytheway":      "Ornery Tumblewagg",
   "Matt Ellis":             "Troll of Khazadum",
-  "Philip":                 "Jacked Rabbit",
+  "Philip":                 "",
   "Summer Wright":          "Kumena, Tyrant of Orazca",
   "Thomas Cheslin":         "Golgari grave troll",
-  "Zack Ibell":             "Faithless looting",
+  "Zack Ibell":             "",
   "Michael Boardman":       "Simic growth chamber",
 };
-
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -96,6 +95,12 @@ let selectedName = null;    // the player the visitor clicked on
 // A shortcut: $("title") is easier to type than document.getElementById("title")
 function $(id) {
   return document.getElementById(id);
+}
+
+// Removes the "Loading..." message from the page. If it's already gone, do nothing.
+function hideLoading() {
+  const loading = $("loading");
+  if (loading) loading.remove();
 }
 
 // Makes text safe to put inside HTML (stops names containing < or " from breaking the page)
@@ -215,25 +220,26 @@ function buildSeason(rows) {
   return { title: rows[0][0].trim(), dates, playerCounts, players, links: [] };
 }
 
-// Gets the Discord link for each week. Tries the script first, then falls back to our saved list.
+// Our saved list of links: one per week, available instantly.
+function backupLinks(weekCount) {
+  return BACKUP_LINK_IDS.slice(0, weekCount).map(id => LINK_PREFIX + id);
+}
+
+// Asks the Apps Script for the latest links. Returns a list, or null if it couldn't.
 // "async/await" means "go and fetch this, and wait for the answer before carrying on".
-async function loadLinks(weekCount) {
-  let links = [];
+// This can take a few seconds, so the page doesn't wait for it (see start() below).
+async function fetchScriptLinks(weekCount) {
   try {
     const response = await fetch(LINKS_API_URL);
     const data = await response.json();
-    links = data.links || [];
+    const links = (data.links || [])
+      .slice(0, weekCount)
+      .map(link => link.startsWith("http") ? link : "");   // blank out anything that isn't a web address
+    return links.some(link => link !== "") ? links : null;
   } catch (error) {
-    console.warn("Link script unavailable, using the backup list.", error);
+    console.warn("Link script unavailable, keeping the backup list.", error);
+    return null;
   }
-
-  const gotAny = links.some(link => link.startsWith("http"));
-  if (!gotAny) {
-    links = BACKUP_LINK_IDS.map(id => LINK_PREFIX + id);
-  }
-
-  // Keep one link per week, and blank out anything that isn't a proper web address
-  return links.slice(0, weekCount).map(link => link.startsWith("http") ? link : "");
 }
 
 
@@ -416,13 +422,25 @@ $("leaderboard").addEventListener("click", event => {
 // ---------- 7. START ----------
 async function start() {
   try {
+    // Step 1: get the sheet. This is the only thing the visitor has to wait for.
     const response = await fetch(SHEET_CSV_URL, { cache: "no-store" });
     if (!response.ok) throw new Error("the sheet returned error " + response.status);
-
     season = buildSeason(parseCsv(await response.text()));
-    season.links = await loadLinks(season.dates.length);
+
+    // Step 2: show the page straight away, using the saved links
+    season.links = backupLinks(season.dates.length);
+    hideLoading();
     drawPage();
+
+    // Step 3: quietly ask the script for newer links, and redraw those parts if it has some
+    const freshLinks = await fetchScriptLinks(season.dates.length);
+    if (freshLinks) {
+      season.links = freshLinks;
+      drawPlayer();
+      drawWeeks();
+    }
   } catch (error) {
+    hideLoading();
     $("message").hidden = false;
     $("message").textContent = "Couldn't load the sheet: " + error.message;
   }
