@@ -130,3 +130,11 @@ i.dropped { background: var(--dropped); }
 }
 .week-box:hover { background: var(--highlight); border-color: var(--counted); }
 .week-box small { color: var(--muted); font-size: 11px; }
+
+/* Card artwork beside a player's name */
+.player-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.player-header h2 { margin: 0; font-size: 22px; }
+.player-header .card-art { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; }
+
+/* The small round version in the leaderboard */
+td .card-art { width: 24px; height: 24px; object-fit: cover; border-radius: 50%; vertical-align: middle; margin-right: 8px; }
