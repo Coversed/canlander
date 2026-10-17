@@ -138,3 +138,18 @@ i.dropped { background: var(--dropped); }
 
 /* The small round version in the leaderboard */
 td .card-art { width: 24px; height: 24px; object-fit: cover; border-radius: 50%; vertical-align: middle; margin-right: 8px; }
+
+/* The "Loading..." message and its spinning circle */
+#loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+/* display:flex above would override the "hidden" attribute, so we restore it here */
+#loading[hidden] { display: none; }
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--counted);   /* one coloured edge is what makes it look like it spins */
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
