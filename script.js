@@ -29,6 +29,58 @@ const BACKUP_LINK_IDS = [
 
 const BEST_RESULTS_COUNTED = 20;   // only each player's best 20 scores count
 const MAX_SCORE = 12;              // a 4-0 night is worth 12 points
+// Each player's signature card, shown beside their name.
+// The name on the left must match the sheet exactly. The card on the right can be any Magic card.
+// These three are PLACEHOLDERS, so replace them with the real ones. Players not listed get no picture.
+const PLAYER_CARDS = {
+  "Ember Smithers":         "Screaming Nemesis",
+  "Helena Jackson":         "Elixir of Immortality",
+  "Jethro Sutherland":      "Emrakul, the promised end",
+  "James Ding":             "Cryptic Command",
+  "George Hunt":            "Tolarian Academy",
+  "Jae Austin-Loczy":       "Parallax Tide",
+  "Alex Hazard":            "Protean Hulk",
+  "Edward Sanderson":       "Tinker",
+  "Henry Clayton":          "Fountainport",
+  "Gregory Painter":        "Verdant Command",
+  "Mark Punter":            "Aang, at the crossroads",
+  "Hazel Shilling":         "Knight of the reliquary",
+  "Hal Hewlett":            "Counterbalance",
+  "Sammi Austin-Loczy":     "Ulamog, the defiler",
+  "Dunc Sabin":             "Boromir, Warden of the Tower",
+  "Niall Maxwell-Thompson": "Nadu, winged wisdom",
+  "Kieran Drinkwater":      "Time vault",
+  "Owen Davis":             "Price of progress",
+  "Matt Clay":              "Black lotus",
+  "Francesco Vitiello":     "Lazav, Wearer of Faces",
+  "Matt Errock":            "Archon of Emeria",
+  "Ben Epstein":            "Sab Sunen, luxa embodied",
+  "Fuzz":                   "Urza's saga",
+  "JJ":                     "Icetill explorer",
+  "Arvid Briscoe":          "Channel",
+  "Toni":                   "Aven Mindcensor",
+  "Daniel Hughes":          "Mole man, Moloid Master",
+  "Alys Lloyd":             "Flash",
+  "Tom Wilkinson":          "Baleful strix",
+  "Ani":                    "Kappa Cannoneer",
+  "Zach Cox":               "Emperor of bones",
+  "Lucy Adams":             "Shallow Grave",
+  "Cass Taylor":            "Simulacrum Synthesiser",
+  "Maia":                   "Pteromander",
+  "Rory":                   "Conspicous snoop",
+  "Cherie":                 "Faithful Watchdog",
+  "Ruben":                  "Teferi, hero of dominaria",
+  "Aaron Rubra":            "Barrowgoyf",
+  "Jennifer Bytheway":      "Ornery Tumblewagg",
+  "Matt Ellis":             "Troll of Khazadum",
+  "Philip":                 "",
+  "Summer Wright":          "Kumena, Tyrant of Orazca",
+  "Thomas Cheslin":         "Golgari grave troll",
+  "Zack Ibell":             "",
+  "Michael Boardman":       "Simic growth chamber",
+};
+};
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 
@@ -60,6 +112,22 @@ function formatDate(raw) {
   const parts = raw.split("/");
   if (parts.length < 2) return raw;
   return Number(parts[0]) + " " + MONTHS[Number(parts[1]) - 1];
+}
+
+
+// Builds the <img> tag for a player's card, using Scryfall's free image service.
+// version can be "art_crop" (just the artwork) or "normal" (the whole card).
+function cardImage(playerName, version) {
+  const cardName = PLAYER_CARDS[playerName];
+  if (!cardName) return "";                        // no card chosen for this player
+
+  const url = "https://api.scryfall.com/cards/named?fuzzy=" +
+    encodeURIComponent(cardName) + "&format=image&version=" + version;
+
+  // loading="lazy": wait until the image is near the screen.
+  // onerror: if Scryfall can't find the card, remove the broken image.
+  return `<img class="card-art" src="${url}" alt="${escapeHtml(cardName)}"
+          title="${escapeHtml(cardName)}" loading="lazy" onerror="this.remove()">`;
 }
 
 
@@ -191,7 +259,7 @@ function miniStrip(player) {
     if (score === null) {
       html += '<i style="height:1px; opacity:0.3"></i>';
     } else {
-      const height = Math.max(2, (score / MAX_SCORE) * 20);
+      const height = Math.max(3, (score / MAX_SCORE) * 20);
       const className = counted.has(i) ? "" : "dropped";
       html += `<i class="${className}" style="height:${height}px"></i>`;
     }
@@ -220,7 +288,7 @@ function drawLeaderboard() {
     html += `
       <tr class="${selected}" data-name="${escapeHtml(player.name)}">
         <td>${player.rank}</td>
-        <td>${escapeHtml(player.name)}</td>
+        <td>${cardImage(player.name, "art_crop")}${escapeHtml(player.name)}</td>
         <td>${player.score}</td>
         <td>${player.played}</td>
         <td>${player.winRate}%</td>
@@ -254,7 +322,7 @@ function drawPlayer() {
       return;
     }
 
-    // Math.max makes sure even a score of 0 gets a small visible stub (3% of the chart height)
+    // Math.max gives even a score of 0 a small visible stub, so "played and scored 0" differs from "didn't play"
     const height = Math.max((score / MAX_SCORE) * 100, 3);
     const className = counted.has(i) ? "" : "dropped";
     const bar = `<i class="${className}" style="height:${height}%"></i>`;
@@ -271,7 +339,10 @@ function drawPlayer() {
   const dayLabels = season.dates.map(date => `<span>${formatDate(date).split(" ")[0]}</span>`).join("");
 
   card.innerHTML = `
-    <h2>${escapeHtml(player.name)}</h2>
+    <div class="player-header">
+      ${cardImage(player.name, "art_crop")}
+      <h2>${escapeHtml(player.name)}</h2>
+    </div>
     <div class="stats">
       <div><b>${player.score}</b><span>Best 20 total</span></div>
       <div><b>${player.played}</b><span>Weeks played</span></div>
@@ -281,7 +352,7 @@ function drawPlayer() {
     </div>
     <div class="bars">${bars}</div>
     <div class="day-labels">${dayLabels}</div>
-    <p class="note">Bar height is the score out of ${MAX_SCORE}. Click a bar to open that night's results.</p>`;
+    <p class="note">Bar height is the score out of ${MAX_SCORE}. A tiny bar means the player attended and scored 0, and a gap means they didn't play. Click a bar to open that night's results.</p>`;
 }
 
 function drawWeeks() {
@@ -305,7 +376,8 @@ function drawPage() {
   document.title = season.title;
   $("title").textContent = season.title;
   $("subtitle").textContent = `${weeksPlayed} weeks played, ${season.players.length} players. Only each player's best ${BEST_RESULTS_COUNTED} results count.`;
-  $("footer").textContent = "Loaded at " + new Date().toLocaleTimeString();
+  $("footer").textContent = "Loaded at " + new Date().toLocaleTimeString() +
+    ". Card images from Scryfall. Magic: The Gathering is © Wizards of the Coast.";
   drawLeaderboard();
   drawPlayer();
   drawWeeks();
