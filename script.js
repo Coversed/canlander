@@ -174,51 +174,110 @@ function parseCsv(text) {
   return rows;
 }
 
-// Turns the raw rows into a tidy "season" object we can use everywhere else.
-// We find things by their LABELS ("Rank", "Date:") so the sheet can grow without breaking us.
+
 function buildSeason(rows) {
-  const headerIndex = rows.findIndex(row => row[0].trim() === "Rank");
-  if (headerIndex === -1) throw new Error("Couldn't find the 'Rank' row. Is this the right tab?");
+  // Safely read a cell, even if the row is shorter than expected.
+  const cellText = (row, index) =>
+    String(row?.[index] ?? "").trim();
 
-  // Week 1 is the column headed "1", after the first 7 columns
-  const firstWeek = rows[headerIndex].findIndex((cell, i) => i >= 7 && cell.trim() === "1");
+  // Find the main player table.
+  const headerIndex = rows.findIndex(
+    row => cellText(row, 0) === "Rank"
+  );
 
-  const dateRow = rows.find(row => row.some(cell => cell.trim() === "Date:"));
-  const countRow = rows.find(row => row.some(cell => cell.trim() === "No of Players:"));
-
-  // Collect the dates, stopping at the first empty one (weeks that haven't happened yet)
-  const dates = [];
-  for (let i = firstWeek; i < dateRow.length && dateRow[i].trim() !== ""; i++) {
-    dates.push(dateRow[i].trim());
+  if (headerIndex === -1) {
+    throw new Error(
+      "Couldn't find the 'Rank' row. Check the published sheet and CSV tab."
+    );
   }
 
-  const playerCounts = dates.map((date, i) => Number(countRow[firstWeek + i]) || 0);
+  const header = rows[headerIndex];
 
-  // Every row below the header that starts with a rank number is a player
+  // Find the column where the weekly scores begin.
+  const firstWeek = header.findIndex(
+    (cell, i) => i >= 7 && String(cell ?? "").trim() === "1"
+  );
+
+  if (firstWeek === -1) {
+    throw new Error(
+      "Couldn't find week 1 in the header row. Check the spreadsheet columns."
+    );
+  }
+
+  // Find the supporting rows used to display dates and player counts.
+  const dateRow = rows.find(
+    row => row.some(cell => String(cell ?? "").trim() === "Date:")
+  );
+
+  const countRow = rows.find(
+    row => row.some(cell => String(cell ?? "").trim() === "No of Players:")
+  );
+
+  if (!dateRow) {
+    throw new Error(
+      "Couldn't find the 'Date:' row. Check that its label still exists in the published sheet."
+    );
+  }
+
+  if (!countRow) {
+    throw new Error(
+      "Couldn't find the 'No of Players:' row. Check that its label still exists in the published sheet."
+    );
+  }
+
+  // Collect dates, stopping at the first empty date.
+  const dates = [];
+
+  for (
+    let i = firstWeek;
+    i < dateRow.length && cellText(dateRow, i) !== "";
+    i++
+  ) {
+    dates.push(cellText(dateRow, i));
+  }
+
+  const playerCounts = dates.map(
+    (_, i) => Number(cellText(countRow, firstWeek + i)) || 0
+  );
+
+  // Collect player rows.
   const players = [];
-  for (const row of rows.slice(headerIndex + 1)) {
-    const hasRank = /^\d+$/.test(row[0].trim());
-    if (!hasRank || row[1].trim() === "") continue;
 
-    // An empty cell means "didn't play" (null). A 0 means "played and scored zero". They differ.
-    const weeks = dates.map((date, i) => {
-      const cell = (row[firstWeek + i] || "").trim();
+  for (const row of rows.slice(headerIndex + 1)) {
+    if (!/^\d+$/.test(cellText(row, 0))) continue;
+    if (!cellText(row, 1)) continue;
+
+    const weeks = dates.map((_, i) => {
+      const cell = cellText(row, firstWeek + i);
       return cell === "" ? null : Number(cell);
     });
 
     players.push({
-      rank: Number(row[0]),
-      name: row[1].trim(),
-      score: Number(row[2]) || 0,
-      played: Number(row[3]) || 0,
-      winRate: parseFloat(row[4]) || 0,
-      wins: Number(row[5]) || 0,
-      weeks: weeks
+      rank: Number(cellText(row, 0)),
+      name: cellText(row, 1),
+      score: Number(cellText(row, 2)) || 0,
+      played: Number(cellText(row, 3)) || 0,
+      winRate: parseFloat(cellText(row, 4)) || 0,
+      wins: Number(cellText(row, 5)) || 0,
+      weeks
     });
   }
 
-  return { title: rows[0][0].trim(), dates, playerCounts, players, links: [] };
+  if (players.length === 0) {
+    throw new Error(
+      "No players were found. Check the Rank and Player columns in the published sheet."
+    );
+  }
+
+  return {
+    title: cellText(rows[0], 0) || "Canlander Leaderboard",
+    dates,
+    playerCounts,
+    players,
+    links: []
+  };
 }
+
 
 // Our saved list of links: one per week, available instantly.
 function backupLinks(weekCount) {
