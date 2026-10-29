@@ -3,7 +3,6 @@
 
 
 // ---------- 1. SETTINGS ----------
-// The only things you should ever need to change are in this section.
 
 // Your published Google Sheet (CSV format)
 const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSYeTe-iIN0az5b5fHbg1PutxX6ZhPcr83r06TGpAS3wriBFHpsE_4NIXo__N0O4SBENSI0ePQJCnWP/pub?gid=0&single=true&output=csv";
@@ -12,12 +11,12 @@ const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSYeTe-iI
 const LINKS_API_URL = "https://script.google.com/macros/s/AKfycbxtKV8TNZT1opGsSZUSgHDVLU1Top-01sFGhl_o4B-xPdwi_4wGNhCxe8zXhB2vCvI/exec";
 
 // Backup Discord links, used if the script above can't be reached.
-// Every address starts the same way, so we only store the unique ending of each one.
 const LINK_PREFIX = "https://discord.com/channels/1312801614825787513/1312828783895511070/";
+
 const BACKUP_LINK_IDS = [
   "1457385501769076847", "1459923877504356353", "1465001701059858564", "1467535585869692979",
   "1470070317232816305", "1472610642862149675", "1475140161577681036", "1477674974809559225",
-  "1480218399454793841", "1482761787270107338", "1485283361907015840", "1487813507444510760",
+  "1480218399450033841", "1482761787270107338", "1485283361907015840", "1487813507444510760",
   "1490346536436236588", "1492880468289388614", "1497959795334844579", "1500494213178064897",
   "1503032780588585142", "1505579024976711791", "1508194008290033714", "1510639470226047127",
   "1513182103246868683", "1515713125716987945", "1518264671851774022", "1520787838889623702",
@@ -27,11 +26,11 @@ const BACKUP_LINK_IDS = [
   "1558844334034391041"
 ];
 
-const BEST_RESULTS_COUNTED = 20;   // only each player's best 20 scores count
-const MAX_SCORE = 12;              // a 4-0 night is worth 12 points
-// Each player's signature card, shown beside their name.
-// Type a Magic card name between the empty quotes. Leave it as "" and that player gets no picture.
-// The names on the left must match the sheet exactly. For a new player, add a line in the same format.
+const BEST_RESULTS_COUNTED = 20;
+const MAX_SCORE = 12;
+
+// Each player's signature Magic card.
+// Player names must match the spreadsheet exactly.
 const PLAYER_CARDS = {
   "Ember Smithers":         "Screaming Nemesis",
   "Helena Jackson":         "Elixir of Immortality",
@@ -77,33 +76,31 @@ const PLAYER_CARDS = {
   "Summer Wright":          "Kumena, Tyrant of Orazca",
   "Thomas Cheslin":         "Golgari grave troll",
   "Zack Ibell":             "Faithless looting",
-  "Michael Boardman":       "Simic growth chamber",
+  "Michael Boardman":       "Simic growth chamber"
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 
-// ---------- 2. THE PAGE'S MEMORY ----------
-// "let" creates a variable, a labelled box that holds a value which can change.
-let season = null;          // all the data, once it has loaded
-let sortBy = "rank";        // which column the table is sorted by
-let sortDirection = 1;      // 1 = lowest first, -1 = highest first
-let selectedName = null;    // the player the visitor clicked on
+// ---------- 2. PAGE STATE ----------
+
+let season = null;
+let sortBy = "rank";
+let sortDirection = 1;
+let selectedName = null;
 
 
-// ---------- 3. SMALL HELPERS ----------
-// A shortcut: $("title") is easier to type than document.getElementById("title")
+// ---------- 3. HELPERS ----------
+
 function $(id) {
   return document.getElementById(id);
 }
 
-// Removes the "Loading..." message from the page. If it's already gone, do nothing.
 function hideLoading() {
   const loading = $("loading");
   if (loading) loading.remove();
 }
 
-// Makes text safe to put inside HTML (stops names containing < or " from breaking the page)
 function escapeHtml(text) {
   return String(text)
     .replace(/&/g, "&amp;")
@@ -112,35 +109,31 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
-// Turns "04/01" (day/month) into "4 Jan"
 function formatDate(raw) {
-  const parts = raw.split("/");
+  const parts = String(raw ?? "").split("/");
   if (parts.length < 2) return raw;
-  return Number(parts[0]) + " " + MONTHS[Number(parts[1]) - 1];
+
+  const month = MONTHS[Number(parts[1]) - 1];
+  if (!month) return raw;
+
+  return Number(parts[0]) + " " + month;
 }
 
-
-// Builds the <img> tag for a player's card, using Scryfall's free image service.
-// version can be "art_crop" (just the artwork) or "normal" (the whole card).
 function cardImage(playerName, version) {
   const cardName = PLAYER_CARDS[playerName];
-  if (!cardName) return "";                        // no card chosen for this player
+  if (!cardName) return "";
 
   const url = "https://api.scryfall.com/cards/named?fuzzy=" +
     encodeURIComponent(cardName) + "&format=image&version=" + version;
 
-  // loading="lazy": wait until the image is near the screen.
-  // onerror: if Scryfall can't find the card, remove the broken image.
   return `<img class="card-art" src="${url}" alt="${escapeHtml(cardName)}"
           title="${escapeHtml(cardName)}" loading="lazy" onerror="this.remove()">`;
 }
 
 
-// ---------- 4. LOADING THE DATA ----------
+// ---------- 4. LOAD AND PARSE THE SHEET ----------
 
-// A CSV is just text where commas separate cells and new lines separate rows.
-// This reads through the text one character at a time and builds a list of rows.
-// Quote marks matter: a comma inside quotes is part of the cell, not a separator.
+// Parse CSV while respecting commas inside quoted cells.
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -151,16 +144,22 @@ function parseCsv(text) {
     const char = text[i];
 
     if (insideQuotes) {
-      if (char === '"' && text[i + 1] === '"') { cell += '"'; i++; }   // "" means a literal quote mark
-      else if (char === '"') { insideQuotes = false; }
-      else { cell += char; }
+      if (char === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (char === '"') {
+        insideQuotes = false;
+      } else {
+        cell += char;
+      }
     } else if (char === '"') {
       insideQuotes = true;
     } else if (char === ",") {
       row.push(cell);
       cell = "";
     } else if (char === "\n" || char === "\r") {
-      if (char === "\r" && text[i + 1] === "\n") i++;                  // Windows line endings
+      if (char === "\r" && text[i + 1] === "\n") i++;
+
       row.push(cell);
       rows.push(row);
       row = [];
@@ -169,8 +168,11 @@ function parseCsv(text) {
       cell += char;
     }
   }
+
+  // Add the final cell and row.
   row.push(cell);
   rows.push(row);
+
   return rows;
 }
 
@@ -193,7 +195,7 @@ function buildSeason(rows) {
 
   const header = rows[headerIndex];
 
-  // Find the column where the weekly scores begin.
+  // Find the column where weekly scores begin.
   const firstWeek = header.findIndex(
     (cell, i) => i >= 7 && String(cell ?? "").trim() === "1"
   );
@@ -204,43 +206,69 @@ function buildSeason(rows) {
     );
   }
 
-  // Find the supporting rows used to display dates and player counts.
-  const dateRow = rows.find(
-    row => row.some(cell => String(cell ?? "").trim() === "Date:")
-  );
+  // Find the row containing dates such as 04/01, 11/01 and 25/01.
+  // The spreadsheet does not need a "Date:" label.
+  const isDate = value =>
+    /^\d{1,2}\/\d{1,2}$/.test(String(value ?? "").trim());
 
-  const countRow = rows.find(
-    row => row.some(cell => String(cell ?? "").trim() === "No of Players:")
-  );
+  let dateRow = null;
+  let largestDateCount = 0;
 
-  if (!dateRow) {
+  for (const row of rows) {
+    const dateCount = row.filter(isDate).length;
+
+    if (dateCount > largestDateCount) {
+      largestDateCount = dateCount;
+      dateRow = row;
+    }
+  }
+
+  if (!dateRow || largestDateCount === 0) {
     throw new Error(
-      "Couldn't find the 'Date:' row. Check that its label still exists in the published sheet."
+      "Couldn't find the row containing weekly dates, such as 04/01 or 11/01."
     );
   }
 
-  if (!countRow) {
-    throw new Error(
-      "Couldn't find the 'No of Players:' row. Check that its label still exists in the published sheet."
-    );
-  }
-
-  // Collect dates, stopping at the first empty date.
-  const dates = [];
-
-  for (
-    let i = firstWeek;
-    i < dateRow.length && cellText(dateRow, i) !== "";
-    i++
-  ) {
-    dates.push(cellText(dateRow, i));
-  }
-
-  const playerCounts = dates.map(
-    (_, i) => Number(cellText(countRow, firstWeek + i)) || 0
+  // Keep dates in their left-to-right order.
+  const dates = dateRow.filter(isDate).map(
+    cell => String(cell).trim()
   );
 
-  // Collect player rows.
+  if (dates.length === 0) {
+    throw new Error("No valid weekly dates were found.");
+  }
+
+  // Player counts may be in a labelled row, or in the top row of the sheet.
+  // If we cannot confidently find them, use zero rather than stopping the page.
+  const countRow = rows.find(row =>
+    row.some(cell =>
+      /No of Players:/i.test(String(cell ?? "").trim())
+    )
+  );
+
+  let playerCounts = dates.map(() => 0);
+
+  if (countRow) {
+    playerCounts = dates.map((_, i) =>
+      Number(cellText(countRow, firstWeek + i)) || 0
+    );
+  } else {
+    // The current sheet puts player-count numbers in the first row.
+    // Extract the numeric cells and use them as the weekly counts.
+    const titleRow = rows[0] || [];
+    const numericCounts = titleRow
+      .map(cell => {
+        const value = String(cell ?? "").trim();
+        return value !== "" && /^\d+(?:\.\d+)?$/.test(value)
+          ? Number(value)
+          : null;
+      })
+      .filter(value => value !== null);
+
+    playerCounts = dates.map((_, i) => numericCounts[i] ?? 0);
+  }
+
+  // Read each player's row.
   const players = [];
 
   for (const row of rows.slice(headerIndex + 1)) {
@@ -249,7 +277,10 @@ function buildSeason(rows) {
 
     const weeks = dates.map((_, i) => {
       const cell = cellText(row, firstWeek + i);
-      return cell === "" ? null : Number(cell);
+      if (cell === "") return null;
+
+      const score = Number(cell);
+      return Number.isFinite(score) ? score : null;
     });
 
     players.push({
@@ -279,77 +310,109 @@ function buildSeason(rows) {
 }
 
 
-// Our saved list of links: one per week, available instantly.
+// ---------- 5. DISCORD LINKS ----------
+
+// Use the saved backup links immediately.
 function backupLinks(weekCount) {
-  return BACKUP_LINK_IDS.slice(0, weekCount).map(id => LINK_PREFIX + id);
+  return BACKUP_LINK_IDS
+    .slice(0, weekCount)
+    .map(id => LINK_PREFIX + id);
 }
 
-// Asks the Apps Script for the latest links. Returns a list, or null if it couldn't.
-// "async/await" means "go and fetch this, and wait for the answer before carrying on".
-// This can take a few seconds, so the page doesn't wait for it (see start() below).
+// Ask the Apps Script for the latest links.
+// If it fails, keep the backup links.
 async function fetchScriptLinks(weekCount) {
   try {
     const response = await fetch(LINKS_API_URL);
+
+    if (!response.ok) {
+      throw new Error("Links service returned error " + response.status);
+    }
+
     const data = await response.json();
-    const links = (data.links || [])
+
+    const links = (Array.isArray(data.links) ? data.links : [])
       .slice(0, weekCount)
-      .map(link => link.startsWith("http") ? link : "");   // blank out anything that isn't a web address
+      .map(link =>
+        typeof link === "string" && link.startsWith("http") ? link : ""
+      );
+
     return links.some(link => link !== "") ? links : null;
   } catch (error) {
-    console.warn("Link script unavailable, keeping the backup list.", error);
+    console.warn(
+      "Link script unavailable, keeping the backup list.",
+      error
+    );
     return null;
   }
 }
 
 
-// ---------- 5. DRAWING THE PAGE ----------
+// ---------- 6. DRAW THE LEADERBOARD ----------
 
-// Works out which weeks count towards a player's best 20.
-// Returns a "Set": a list of week numbers with no duplicates, handy for asking "is this week in it?"
+// Determine which weeks count towards a player's best 20 scores.
 function countedWeeks(weeks) {
   const played = [];
+
   weeks.forEach((score, weekNumber) => {
-    if (score !== null) played.push({ score, weekNumber });
+    if (score !== null) {
+      played.push({ score, weekNumber });
+    }
   });
-  played.sort((a, b) => b.score - a.score);               // highest first
+
+  played.sort((a, b) => b.score - a.score);
+
   const best = played.slice(0, BEST_RESULTS_COUNTED);
+
   return new Set(best.map(item => item.weekNumber));
 }
 
-// The tiny bar chart in each leaderboard row
+
+// Draw the small score bars in the leaderboard table.
 function miniStrip(player) {
   const counted = countedWeeks(player.weeks);
   let html = '<span class="strip">';
+
   player.weeks.forEach((score, i) => {
     if (score === null) {
       html += '<i style="height:1px; opacity:0.3"></i>';
     } else {
       const height = Math.max(3, (score / MAX_SCORE) * 20);
       const className = counted.has(i) ? "" : "dropped";
+
       html += `<i class="${className}" style="height:${height}px"></i>`;
     }
   });
+
   return html + "</span>";
 }
 
-function drawLeaderboard() {
-  const searchText = $("search").value.toLowerCase();
 
-  // Keep only players matching the search, then sort them
+function drawLeaderboard() {
+  const searchBox = $("search");
+  const searchText = searchBox ? searchBox.value.toLowerCase() : "";
+
   const shown = season.players
     .filter(player => player.name.toLowerCase().includes(searchText))
     .sort((a, b) => {
       const first = a[sortBy];
       const second = b[sortBy];
-      if (typeof first === "string") return first.localeCompare(second) * sortDirection;
+
+      if (typeof first === "string") {
+        return first.localeCompare(second) * sortDirection;
+      }
+
       return (first - second) * sortDirection;
     });
 
-  // Build one table row of HTML per player, then put it all on the page at once
   let html = "";
+
   for (const player of shown) {
     const selected = player.name === selectedName ? "selected" : "";
-    const wins = player.wins > 0 ? `<span class="gold">${player.wins}</span>` : "0";
+    const wins = player.wins > 0
+      ? `<span class="gold">${player.wins}</span>`
+      : "0";
+
     html += `
       <tr class="${selected}" data-name="${escapeHtml(player.name)}">
         <td>${player.rank}</td>
@@ -361,47 +424,60 @@ function drawLeaderboard() {
         <td>${miniStrip(player)}</td>
       </tr>`;
   }
+
   $("leaderboard").innerHTML = html;
 }
 
-// The card with one player's season, shown when a row is clicked
+
+// Draw the detailed card for the selected player.
 function drawPlayer() {
   const card = $("player-card");
   const player = season.players.find(p => p.name === selectedName);
-  if (!player) { card.hidden = true; return; }
+
+  if (!player) {
+    card.hidden = true;
+    return;
+  }
+
   card.hidden = false;
 
   const counted = countedWeeks(player.weeks);
 
-  // Average of their last 5 results
+  // Average of the last five results.
   const results = player.weeks.filter(score => score !== null);
   const last5 = results.slice(-5);
   const sum = last5.reduce((total, score) => total + score, 0);
-  const average = last5.length ? (sum / last5.length).toFixed(1) : "-";
+  const average = last5.length
+    ? (sum / last5.length).toFixed(1)
+    : "-";
 
-  // One bar per week. If the week has a Discord link, the bar becomes a clickable link.
+  // Draw one bar per week.
   let bars = "";
+
   player.weeks.forEach((score, i) => {
+    const date = season.dates[i] || "";
+
     if (score === null) {
-      bars += `<div class="slot" title="${formatDate(season.dates[i])}: did not play"></div>`;
+      bars += `<div class="slot" title="${formatDate(date)}: did not play"></div>`;
       return;
     }
 
-    // Math.max gives even a score of 0 a small visible stub, so "played and scored 0" differs from "didn't play"
     const height = Math.max((score / MAX_SCORE) * 100, 3);
     const className = counted.has(i) ? "" : "dropped";
     const bar = `<i class="${className}" style="height:${height}%"></i>`;
-    const title = formatDate(season.dates[i]) + ": " + score;
+    const title = formatDate(date) + ": " + score;
     const link = season.links[i];
 
     if (link) {
-      bars += `<a class="slot" href="${escapeHtml(link)}" target="_blank" rel="noopener" title="${title}">${bar}</a>`;
+      bars += `<a class="slot" href="${escapeHtml(link)}" target="_blank" rel="noopener" title="${escapeHtml(title)}">${bar}</a>`;
     } else {
-      bars += `<div class="slot" title="${title}">${bar}</div>`;
+      bars += `<div class="slot" title="${escapeHtml(title)}">${bar}</div>`;
     }
   });
 
-  const dayLabels = season.dates.map(date => `<span>${formatDate(date).split(" ")[0]}</span>`).join("");
+  const dayLabels = season.dates
+    .map(date => `<span>${formatDate(date).split(" ")[0]}</span>`)
+    .join("");
 
   card.innerHTML = `
     <div class="player-header">
@@ -420,88 +496,142 @@ function drawPlayer() {
     <p class="note">Bar height is the score out of ${MAX_SCORE}. A tiny bar means the player attended and scored 0, and a gap means they didn't play. Click a bar to open that night's results.</p>`;
 }
 
+
+// Draw the weekly links and attendance counts.
 function drawWeeks() {
+  const weeksCard = $("weeks-card");
+  const weeksContainer = $("weeks");
+
   const anyLinks = season.links.some(link => link !== "");
-  $("weeks-card").hidden = !anyLinks;
+
+  if (weeksCard) weeksCard.hidden = !anyLinks;
 
   let html = "";
+
   season.dates.forEach((date, i) => {
-    if (season.playerCounts[i] === 0) return;               // skip weeks not played yet
-    const label = `${formatDate(date)}<small>${season.playerCounts[i]} players</small>`;
+    if (season.playerCounts[i] === 0) return;
+
+    const label =
+      `${formatDate(date)}<small>${season.playerCounts[i]} players</small>`;
+
     const link = season.links[i];
+
     html += link
       ? `<a class="week-box" href="${escapeHtml(link)}" target="_blank" rel="noopener">${label}</a>`
       : `<span class="week-box">${label}</span>`;
   });
-  $("weeks").innerHTML = html;
+
+  weeksContainer.innerHTML = html;
 }
+
 
 function drawPage() {
   const weeksPlayed = season.playerCounts.filter(count => count > 0).length;
+
   document.title = season.title;
   $("title").textContent = season.title;
-  $("subtitle").textContent = `${weeksPlayed} weeks played, ${season.players.length} players. Only each player's best ${BEST_RESULTS_COUNTED} results count.`;
-  $("footer").textContent = "Loaded at " + new Date().toLocaleTimeString() +
+
+  $("subtitle").textContent =
+    `${weeksPlayed} weeks played, ${season.players.length} players. Only each player's best ${BEST_RESULTS_COUNTED} results count.`;
+
+  $("footer").textContent =
+    "Loaded at " + new Date().toLocaleTimeString() +
     ". Card images from Scryfall. Magic: The Gathering is © Wizards of the Coast.";
+
   drawLeaderboard();
   drawPlayer();
   drawWeeks();
 }
 
 
-// ---------- 6. REACTING TO THE VISITOR ----------
+// ---------- 7. REACT TO VISITOR ACTIONS ----------
 
-// Typing in the search box
+// Typing in the search box.
 $("search").addEventListener("input", drawLeaderboard);
 
-// Clicking a column heading sorts by it. Clicking it again reverses the order.
+
+// Clicking a column heading sorts the table.
 document.querySelector("thead").addEventListener("click", event => {
-  const column = event.target.dataset.sort;                 // reads the data-sort="..." from the HTML
+  const column = event.target.dataset.sort;
+
   if (!column) return;
+
   if (sortBy === column) {
     sortDirection = -sortDirection;
   } else {
     sortBy = column;
     sortDirection = (column === "rank" || column === "name") ? 1 : -1;
   }
+
   drawLeaderboard();
 });
 
-// Clicking a player's row shows their season
+
+// Clicking a player row shows their season.
 $("leaderboard").addEventListener("click", event => {
   const row = event.target.closest("tr");
+
   if (!row) return;
+
   selectedName = row.dataset.name;
+
   drawLeaderboard();
   drawPlayer();
-  $("player-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  $("player-card").scrollIntoView({
+    behavior: "smooth",
+    block: "nearest"
+  });
 });
 
 
-// ---------- 7. START ----------
+// ---------- 8. START ----------
+
 async function start() {
   try {
-    // Step 1: get the sheet. This is the only thing the visitor has to wait for.
-    const response = await fetch(SHEET_CSV_URL, { cache: "no-store" });
-    if (!response.ok) throw new Error("the sheet returned error " + response.status);
-    season = buildSeason(parseCsv(await response.text()));
+    // Fetch the published spreadsheet.
+    const response = await fetch(SHEET_CSV_URL, {
+      cache: "no-store"
+    });
 
-    // Step 2: show the page straight away, using the saved links
+    if (!response.ok) {
+      throw new Error("The sheet returned error " + response.status);
+    }
+
+    const csvText = await response.text();
+
+    if (!csvText.trim()) {
+      throw new Error("The published sheet returned an empty CSV.");
+    }
+
+    season = buildSeason(parseCsv(csvText));
+
+    // Display the page immediately using the saved Discord links.
     season.links = backupLinks(season.dates.length);
+
     hideLoading();
     drawPage();
 
-    // Step 3: quietly ask the script for newer links, and redraw those parts if it has some
+    // Quietly fetch updated links and redraw the relevant sections.
     const freshLinks = await fetchScriptLinks(season.dates.length);
+
     if (freshLinks) {
       season.links = freshLinks;
       drawPlayer();
       drawWeeks();
     }
   } catch (error) {
+    console.error("Leaderboard load failed:", error);
+
     hideLoading();
-    $("message").hidden = false;
-    $("message").textContent = "Couldn't load the sheet: " + error.message;
+
+    const message = $("message");
+
+    if (message) {
+      message.hidden = false;
+      message.textContent =
+        "Couldn't load the sheet: " + error.message;
+    }
   }
 }
 
