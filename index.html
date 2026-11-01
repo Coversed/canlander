@@ -20,6 +20,15 @@
     <!-- Shown while the sheet loads. JavaScript hides it as soon as the data arrives. -->
     <p id="loading"><span class="spinner"></span> Loading the latest results...</p>
 
+    <!-- The page switcher. Each link changes the address to #players or #decks, and script.js shows the matching section. -->
+    <nav class="tabs">
+      <a href="#players" data-tab="players">Players</a>
+      <a href="#decks" data-tab="decks" id="decks-tab" hidden>Decks</a>
+    </nav>
+
+    <!-- Everything about players lives in this box, so we can hide it all at once -->
+    <div id="players-view">
+
     <!-- Each "card" is one white box on the page -->
     <section class="card">
       <h2>Leaderboard</h2>
@@ -52,6 +61,37 @@
       <div id="weeks"></div>
       <p class="note">Each date opens that night's results post.</p>
     </section>
+    </div>
+
+    <!-- Everything about decks. Hidden until you click the Decks tab. -->
+    <div id="decks-view" hidden>
+      <section class="card">
+        <div class="stats" id="deck-stats"></div>
+      </section>
+
+      <section class="card">
+        <h2>Decks</h2>
+        <input id="deck-search" type="search" placeholder="Search decks">
+        <label class="check"><input type="checkbox" id="deck-min"> Only decks with 10+ events</label>
+        <div class="table-wrap">
+          <table class="mini">
+            <thead id="deck-head">
+              <tr>
+                <th data-sort="name">Deck</th>
+                <th data-sort="events">Events</th>
+                <th data-sort="winRate">Win %</th>
+                <th data-sort="wins">4-0s</th>
+                <th data-sort="players">Players</th>
+              </tr>
+            </thead>
+            <tbody id="deck-list"></tbody>
+          </table>
+        </div>
+        <p class="note">Click a deck to see who plays it.</p>
+      </section>
+
+      <section class="card" id="deck-card" hidden></section>
+    </div>
 
     <p id="footer"></p>
   </main>
