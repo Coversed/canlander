@@ -3,6 +3,7 @@
 
 
 // ---------- 1. SETTINGS ----------
+// The only things you should ever need to change are in this section.
 
 // Your published Google Sheet (CSV format)
 const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSYeTe-iIN0az5b5fHbg1PutxX6ZhPcr83r06TGpAS3wriBFHpsE_4NIXo__N0O4SBENSI0ePQJCnWP/pub?gid=0&single=true&output=csv";
@@ -10,13 +11,31 @@ const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSYeTe-iI
 // Your Apps Script address, which reads the hyperlinks behind the "Link" cells
 const LINKS_API_URL = "https://script.google.com/macros/s/AKfycbxtKV8TNZT1opGsSZUSgHDVLU1Top-01sFGhl_o4B-xPdwi_4wGNhCxe8zXhB2vCvI/exec";
 
-// Backup Discord links, used if the script above can't be reached.
-const LINK_PREFIX = "https://discord.com/channels/1312801614825787513/1312828783895511070/";
+// The published CSV of the "decks" tab (File > Share > Publish to web > pick that tab > CSV).
+// Leave it as "" to switch the Decks page off.
+const DECKS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSYeTe-iIN0az5b5fHbg1PutxX6ZhPcr83r06TGpAS3wriBFHpsE_4NIXo__N0O4SBENSI0ePQJCnWP/pub?gid=1599000471&single=true&output=csv";
 
+// The decks tab spells some names differently from the main sheet.
+// Left: how it's written on the decks tab. Right: how it's written on the main sheet.
+const NAME_ALIASES = {
+  "Ani Jackson": "Ani",
+  "Cherie Baker": "Cherie",
+  "Daniel": "Daniel Hughes",
+  "Duncan Sabin": "Dunc Sabin",
+  "Ellis": "Matt Ellis",
+  "JJ Pinnick": "JJ",
+  "Jenny Bytheway": "Jennifer Bytheway",
+  "Rory Miller": "Rory",
+  "Summer": "Summer Wright"
+};
+
+// Backup Discord links, used if the script above can't be reached.
+// Every address starts the same way, so we only store the unique ending of each one.
+const LINK_PREFIX = "https://discord.com/channels/1312801614825787513/1312828783895511070/";
 const BACKUP_LINK_IDS = [
   "1457385501769076847", "1459923877504356353", "1465001701059858564", "1467535585869692979",
   "1470070317232816305", "1472610642862149675", "1475140161577681036", "1477674974809559225",
-  "1480218399450033841", "1482761787270107338", "1485283361907015840", "1487813507444510760",
+  "1480218399454793841", "1482761787270107338", "1485283361907015840", "1487813507444510760",
   "1490346536436236588", "1492880468289388614", "1497959795334844579", "1500494213178064897",
   "1503032780588585142", "1505579024976711791", "1508194008290033714", "1510639470226047127",
   "1513182103246868683", "1515713125716987945", "1518264671851774022", "1520787838889623702",
@@ -26,11 +45,11 @@ const BACKUP_LINK_IDS = [
   "1558844334034391041"
 ];
 
-const BEST_RESULTS_COUNTED = 20;
-const MAX_SCORE = 12;
-
-// Each player's signature Magic card.
-// Player names must match the spreadsheet exactly.
+const BEST_RESULTS_COUNTED = 20;   // only each player's best 20 scores count
+const MAX_SCORE = 12;              // a 4-0 night is worth 12 points
+// Each player's signature card, shown beside their name.
+// Type a Magic card name between the empty quotes. Leave it as "" and that player gets no picture.
+// The names on the left must match the sheet exactly. For a new player, add a line in the same format.
 const PLAYER_CARDS = {
   "Ember Smithers":         "Screaming Nemesis",
   "Helena Jackson":         "Elixir of Immortality",
@@ -76,31 +95,37 @@ const PLAYER_CARDS = {
   "Summer Wright":          "Kumena, Tyrant of Orazca",
   "Thomas Cheslin":         "Golgari grave troll",
   "Zack Ibell":             "Faithless looting",
-  "Michael Boardman":       "Simic growth chamber"
+  "Michael Boardman":       "Simic growth chamber",
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 
-// ---------- 2. PAGE STATE ----------
+// ---------- 2. THE PAGE'S MEMORY ----------
+// "let" creates a variable, a labelled box that holds a value which can change.
+let season = null;          // all the data, once it has loaded
+let sortBy = "rank";        // which column the table is sorted by
+let sortDirection = 1;      // 1 = lowest first, -1 = highest first
+let selectedName = null;    // the player the visitor clicked on
+let decks = null;           // the deck data, once it has loaded (stays null if there isn't any)
+let selectedDeck = null;    // the deck the visitor clicked on
+let deckSortBy = "events";  // decks start sorted by most played
+let deckSortDirection = -1;
 
-let season = null;
-let sortBy = "rank";
-let sortDirection = 1;
-let selectedName = null;
 
-
-// ---------- 3. HELPERS ----------
-
+// ---------- 3. SMALL HELPERS ----------
+// A shortcut: $("title") is easier to type than document.getElementById("title")
 function $(id) {
   return document.getElementById(id);
 }
 
+// Removes the "Loading..." message from the page. If it's already gone, do nothing.
 function hideLoading() {
   const loading = $("loading");
   if (loading) loading.remove();
 }
 
+// Makes text safe to put inside HTML (stops names containing < or " from breaking the page)
 function escapeHtml(text) {
   return String(text)
     .replace(/&/g, "&amp;")
@@ -109,6 +134,7 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
+// Turns "04/01" (day/month) into "4 Jan"
 function formatDate(raw) {
   const parts = String(raw ?? "").split("/");
   if (parts.length < 2) return raw;
@@ -119,21 +145,38 @@ function formatDate(raw) {
   return Number(parts[0]) + " " + month;
 }
 
+
+// Turns a name from the decks tab into the name used on the main sheet
+function canonicalName(name) {
+  return NAME_ALIASES[name] || name;
+}
+
+// 62.5 becomes "62.5%"
+function percent(number) {
+  return number.toFixed(1) + "%";
+}
+
+// Builds the <img> tag for a player's card, using Scryfall's free image service.
+// version can be "art_crop" (just the artwork) or "normal" (the whole card).
 function cardImage(playerName, version) {
   const cardName = PLAYER_CARDS[playerName];
-  if (!cardName) return "";
+  if (!cardName) return "";                        // no card chosen for this player
 
   const url = "https://api.scryfall.com/cards/named?fuzzy=" +
     encodeURIComponent(cardName) + "&format=image&version=" + version;
 
+  // loading="lazy": wait until the image is near the screen.
+  // onerror: if Scryfall can't find the card, remove the broken image.
   return `<img class="card-art" src="${url}" alt="${escapeHtml(cardName)}"
           title="${escapeHtml(cardName)}" loading="lazy" onerror="this.remove()">`;
 }
 
 
-// ---------- 4. LOAD AND PARSE THE SHEET ----------
+// ---------- 4. LOADING THE DATA ----------
 
-// Parse CSV while respecting commas inside quoted cells.
+// A CSV is just text where commas separate cells and new lines separate rows.
+// This reads through the text one character at a time and builds a list of rows.
+// Quote marks matter: a comma inside quotes is part of the cell, not a separator.
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -144,22 +187,16 @@ function parseCsv(text) {
     const char = text[i];
 
     if (insideQuotes) {
-      if (char === '"' && text[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (char === '"') {
-        insideQuotes = false;
-      } else {
-        cell += char;
-      }
+      if (char === '"' && text[i + 1] === '"') { cell += '"'; i++; }   // "" means a literal quote mark
+      else if (char === '"') { insideQuotes = false; }
+      else { cell += char; }
     } else if (char === '"') {
       insideQuotes = true;
     } else if (char === ",") {
       row.push(cell);
       cell = "";
     } else if (char === "\n" || char === "\r") {
-      if (char === "\r" && text[i + 1] === "\n") i++;
-
+      if (char === "\r" && text[i + 1] === "\n") i++;                  // Windows line endings
       row.push(cell);
       rows.push(row);
       row = [];
@@ -168,15 +205,23 @@ function parseCsv(text) {
       cell += char;
     }
   }
-
-  // Add the final cell and row.
   row.push(cell);
   rows.push(row);
-
   return rows;
 }
 
+// Finds a column's position by its heading, trying several possible names.
+// Returns -1 if none of them is there.
+function findColumn(headerRow, names) {
+  return headerRow.findIndex(cell => names.includes(cell.trim().toLowerCase()));
+}
 
+// Safely reads a cell. If the column doesn't exist, or the row is short, we get "" instead of an error.
+function cellAt(row, index) {
+  return index >= 0 && index < row.length ? row[index] : "";
+}
+
+// Turns the raw rows into a tidy "season" object we can use everywhere else.
 function buildSeason(rows) {
   // Safely read a cell, even if the row is shorter than expected.
   const cellText = (row, index) =>
@@ -309,110 +354,151 @@ function buildSeason(rows) {
   };
 }
 
-
-// ---------- 5. DISCORD LINKS ----------
-
-// Use the saved backup links immediately.
-function backupLinks(weekCount) {
-  return BACKUP_LINK_IDS
-    .slice(0, weekCount)
-    .map(id => LINK_PREFIX + id);
+// Like findColumn, but only looks to the right of a starting column.
+// The decks tab has two blocks that both have "Events Played" and "Win Rate" headings.
+function findColumnFrom(headerRow, name, startIndex) {
+  return headerRow.findIndex((cell, i) => i > startIndex && cell.trim().toLowerCase() === name);
 }
 
-// Ask the Apps Script for the latest links.
-// If it fails, keep the backup links.
+// Turns the "Player Deck Stats" tab into two lists:
+//   entries: one per player + deck (who played what, and how it went), read straight from the tab
+//   summary: one per deck, which we work out by adding up everyone who played it
+function buildDecks(rows) {
+  const headerIndex = rows.findIndex(row => findColumn(row, ["player"]) !== -1 && findColumn(row, ["deck"]) !== -1);
+  if (headerIndex === -1) throw new Error("Couldn't find the 'Player' and 'Deck' headings on the decks tab.");
+  const header = rows[headerIndex];
+
+  // Columns: Player, Deck, Events Played, Win Rate, 4/0/0 Finishes
+  const col = { player: findColumn(header, ["player"]), deck: findColumn(header, ["deck"]) };
+  col.events = findColumnFrom(header, "events played", col.deck);
+  col.winRate = findColumnFrom(header, "win rate", col.deck);
+  col.finishes = findColumnFrom(header, "4/0/0 finishes", col.deck);
+
+  const entries = [];
+  for (const row of rows.slice(headerIndex + 1)) {
+    const player = cellAt(row, col.player).trim();
+    const deck = cellAt(row, col.deck).trim();
+    if (!player || !deck) continue;
+
+    entries.push({
+      player: player,
+      deck: deck,
+      events: Number(cellAt(row, col.events)) || 0,
+      winRate: parseFloat(cellAt(row, col.winRate)) || 0,
+      finishes: Number(cellAt(row, col.finishes)) || 0
+    });
+  }
+
+  // A "Map" is a list of labelled boxes: here, one box per deck name
+  const totals = new Map();
+  for (const entry of entries) {
+    if (!totals.has(entry.deck)) {
+      totals.set(entry.deck, { name: entry.deck, events: 0, wins: 0, winPoints: 0, pilots: new Set() });
+    }
+    const deck = totals.get(entry.deck);
+    deck.events += entry.events;
+    deck.wins += entry.finishes;
+    deck.winPoints += entry.winRate * entry.events;      // win rate counts for more when they played more events
+    deck.pilots.add(canonicalName(entry.player));
+  }
+
+  const summary = [];
+  for (const deck of totals.values()) {
+    summary.push({
+      name: deck.name,
+      events: deck.events,
+      wins: deck.wins,
+      winRate: deck.events > 0 ? deck.winPoints / deck.events : 0,
+      players: deck.pilots.size
+    });
+  }
+  return { entries, summary };
+}
+
+// Fetches the decks tab. If anything goes wrong we return null, and the site simply has no Decks tab.
+async function loadDecks() {
+  if (!DECKS_CSV_URL || !$("decks-view")) return null;   // no link, or an older index.html: skip decks
+  try {
+    const response = await fetch(DECKS_CSV_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error("error " + response.status);
+    return buildDecks(parseCsv(await response.text()));
+  } catch (error) {
+    console.warn("Couldn't load the decks tab.", error);
+    return null;
+  }
+}
+
+// Our saved list of links: one per week, available instantly.
+function backupLinks(weekCount) {
+  return BACKUP_LINK_IDS.slice(0, weekCount).map(id => LINK_PREFIX + id);
+}
+
+// Asks the Apps Script for the latest links. Returns a list, or null if it couldn't.
+// "async/await" means "go and fetch this, and wait for the answer before carrying on".
+// This can take a few seconds, so the page doesn't wait for it (see start() below).
 async function fetchScriptLinks(weekCount) {
   try {
     const response = await fetch(LINKS_API_URL);
-
-    if (!response.ok) {
-      throw new Error("Links service returned error " + response.status);
-    }
-
     const data = await response.json();
-
-    const links = (Array.isArray(data.links) ? data.links : [])
+    const links = (data.links || [])
       .slice(0, weekCount)
-      .map(link =>
-        typeof link === "string" && link.startsWith("http") ? link : ""
-      );
-
+      .map(link => link.startsWith("http") ? link : "");   // blank out anything that isn't a web address
     return links.some(link => link !== "") ? links : null;
   } catch (error) {
-    console.warn(
-      "Link script unavailable, keeping the backup list.",
-      error
-    );
+    console.warn("Link script unavailable, keeping the backup list.", error);
     return null;
   }
 }
 
 
-// ---------- 6. DRAW THE LEADERBOARD ----------
+// ---------- 5. DRAWING THE PAGE ----------
 
-// Determine which weeks count towards a player's best 20 scores.
+// Works out which weeks count towards a player's best 20.
+// Returns a "Set": a list of week numbers with no duplicates, handy for asking "is this week in it?"
 function countedWeeks(weeks) {
   const played = [];
-
   weeks.forEach((score, weekNumber) => {
-    if (score !== null) {
-      played.push({ score, weekNumber });
-    }
+    if (score !== null) played.push({ score, weekNumber });
   });
-
-  played.sort((a, b) => b.score - a.score);
-
+  played.sort((a, b) => b.score - a.score);               // highest first
   const best = played.slice(0, BEST_RESULTS_COUNTED);
-
   return new Set(best.map(item => item.weekNumber));
 }
 
-
-// Draw the small score bars in the leaderboard table.
+// The tiny bar chart in each leaderboard row
 function miniStrip(player) {
   const counted = countedWeeks(player.weeks);
   let html = '<span class="strip">';
-
   player.weeks.forEach((score, i) => {
     if (score === null) {
       html += '<i style="height:1px; opacity:0.3"></i>';
     } else {
       const height = Math.max(3, (score / MAX_SCORE) * 20);
       const className = counted.has(i) ? "" : "dropped";
-
       html += `<i class="${className}" style="height:${height}px"></i>`;
     }
   });
-
   return html + "</span>";
 }
 
-
 function drawLeaderboard() {
-  const searchBox = $("search");
-  const searchText = searchBox ? searchBox.value.toLowerCase() : "";
+  const searchText = $("search").value.toLowerCase();
 
+  // Keep only players matching the search, then sort them
   const shown = season.players
     .filter(player => player.name.toLowerCase().includes(searchText))
     .sort((a, b) => {
       const first = a[sortBy];
       const second = b[sortBy];
-
-      if (typeof first === "string") {
-        return first.localeCompare(second) * sortDirection;
-      }
-
+      if (typeof first === "string") return first.localeCompare(second) * sortDirection;
       return (first - second) * sortDirection;
     });
 
+  // Build one table row of HTML per player, then put it all on the page at once
   let html = "";
-
   for (const player of shown) {
     const selected = player.name === selectedName ? "selected" : "";
-    const wins = player.wins > 0
-      ? `<span class="gold">${player.wins}</span>`
-      : "0";
-
+    const wins = player.wins > 0 ? `<span class="gold">${player.wins}</span>` : "0";
     html += `
       <tr class="${selected}" data-name="${escapeHtml(player.name)}">
         <td>${player.rank}</td>
@@ -424,60 +510,47 @@ function drawLeaderboard() {
         <td>${miniStrip(player)}</td>
       </tr>`;
   }
-
   $("leaderboard").innerHTML = html;
 }
 
-
-// Draw the detailed card for the selected player.
+// The card with one player's season, shown when a row is clicked
 function drawPlayer() {
   const card = $("player-card");
   const player = season.players.find(p => p.name === selectedName);
-
-  if (!player) {
-    card.hidden = true;
-    return;
-  }
-
+  if (!player) { card.hidden = true; return; }
   card.hidden = false;
 
   const counted = countedWeeks(player.weeks);
 
-  // Average of the last five results.
+  // Average of their last 5 results
   const results = player.weeks.filter(score => score !== null);
   const last5 = results.slice(-5);
   const sum = last5.reduce((total, score) => total + score, 0);
-  const average = last5.length
-    ? (sum / last5.length).toFixed(1)
-    : "-";
+  const average = last5.length ? (sum / last5.length).toFixed(1) : "-";
 
-  // Draw one bar per week.
+  // One bar per week. If the week has a Discord link, the bar becomes a clickable link.
   let bars = "";
-
   player.weeks.forEach((score, i) => {
-    const date = season.dates[i] || "";
-
     if (score === null) {
-      bars += `<div class="slot" title="${formatDate(date)}: did not play"></div>`;
+      bars += `<div class="slot" title="${formatDate(season.dates[i])}: did not play"></div>`;
       return;
     }
 
+    // Math.max gives even a score of 0 a small visible stub, so "played and scored 0" differs from "didn't play"
     const height = Math.max((score / MAX_SCORE) * 100, 3);
     const className = counted.has(i) ? "" : "dropped";
     const bar = `<i class="${className}" style="height:${height}%"></i>`;
-    const title = formatDate(date) + ": " + score;
+    const title = formatDate(season.dates[i]) + ": " + score;
     const link = season.links[i];
 
     if (link) {
-      bars += `<a class="slot" href="${escapeHtml(link)}" target="_blank" rel="noopener" title="${escapeHtml(title)}">${bar}</a>`;
+      bars += `<a class="slot" href="${escapeHtml(link)}" target="_blank" rel="noopener" title="${title}">${bar}</a>`;
     } else {
-      bars += `<div class="slot" title="${escapeHtml(title)}">${bar}</div>`;
+      bars += `<div class="slot" title="${title}">${bar}</div>`;
     }
   });
 
-  const dayLabels = season.dates
-    .map(date => `<span>${formatDate(date).split(" ")[0]}</span>`)
-    .join("");
+  const dayLabels = season.dates.map(date => `<span>${formatDate(date).split(" ")[0]}</span>`).join("");
 
   card.innerHTML = `
     <div class="player-header">
@@ -493,145 +566,244 @@ function drawPlayer() {
     </div>
     <div class="bars">${bars}</div>
     <div class="day-labels">${dayLabels}</div>
-    <p class="note">Bar height is the score out of ${MAX_SCORE}. A tiny bar means the player attended and scored 0, and a gap means they didn't play. Click a bar to open that night's results.</p>`;
+    <p class="note">Bar height is the score out of ${MAX_SCORE}. A tiny bar means the player attended and scored 0, and a gap means they didn't play. Click a bar to open that night's results.</p>
+    ${playerDecksHtml(player.name)}`;
 }
 
-
-// Draw the weekly links and attendance counts.
 function drawWeeks() {
-  const weeksCard = $("weeks-card");
-  const weeksContainer = $("weeks");
-
   const anyLinks = season.links.some(link => link !== "");
-
-  if (weeksCard) weeksCard.hidden = !anyLinks;
+  $("weeks-card").hidden = !anyLinks;
 
   let html = "";
-
   season.dates.forEach((date, i) => {
-    if (season.playerCounts[i] === 0) return;
-
-    const label =
-      `${formatDate(date)}<small>${season.playerCounts[i]} players</small>`;
-
+    if (season.playerCounts[i] === 0) return;               // skip weeks not played yet
+    const label = `${formatDate(date)}<small>${season.playerCounts[i]} players</small>`;
     const link = season.links[i];
-
     html += link
       ? `<a class="week-box" href="${escapeHtml(link)}" target="_blank" rel="noopener">${label}</a>`
       : `<span class="week-box">${label}</span>`;
   });
-
-  weeksContainer.innerHTML = html;
+  $("weeks").innerHTML = html;
 }
-
 
 function drawPage() {
   const weeksPlayed = season.playerCounts.filter(count => count > 0).length;
-
   document.title = season.title;
   $("title").textContent = season.title;
-
-  $("subtitle").textContent =
-    `${weeksPlayed} weeks played, ${season.players.length} players. Only each player's best ${BEST_RESULTS_COUNTED} results count.`;
-
-  $("footer").textContent =
-    "Loaded at " + new Date().toLocaleTimeString() +
+  $("subtitle").textContent = `${weeksPlayed} weeks played, ${season.players.length} players. Only each player's best ${BEST_RESULTS_COUNTED} results count.`;
+  $("footer").textContent = "Loaded at " + new Date().toLocaleTimeString() +
     ". Card images from Scryfall. Magic: The Gathering is © Wizards of the Coast.";
-
   drawLeaderboard();
   drawPlayer();
   drawWeeks();
 }
 
 
-// ---------- 7. REACT TO VISITOR ACTIONS ----------
+// The "Decks played" list shown on a player's card
+function playerDecksHtml(playerName) {
+  if (!decks) return "";
+  const mine = decks.entries
+    .filter(entry => canonicalName(entry.player) === playerName)
+    .sort((a, b) => b.events - a.events);
+  if (mine.length === 0) return "";
 
-// Typing in the search box.
+  let rows = "";
+  for (const entry of mine) {
+    rows += `<tr><td>${escapeHtml(entry.deck)}</td><td>${entry.events}</td><td>${percent(entry.winRate)}</td><td>${entry.finishes}</td></tr>`;
+  }
+  return `
+    <h3>Decks played</h3>
+    <div class="table-wrap"><table class="mini static">
+      <thead><tr><th>Deck</th><th>Events</th><th>Win %</th><th>4-0s</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+// The row of big numbers at the top of the Decks tab
+function drawDeckStats() {
+  const entries = decks.entries.reduce((total, e) => total + e.events, 0);
+  const finishes = decks.entries.reduce((total, e) => total + e.finishes, 0);
+  const players = new Set(decks.entries.map(e => canonicalName(e.player))).size;
+  $("deck-stats").innerHTML = `
+    <div><b>${entries}</b><span>Player-event entries</span></div>
+    <div><b>${finishes}</b><span>Perfect finishes</span></div>
+    <div><b>${decks.summary.length}</b><span>Decks</span></div>
+    <div><b>${players}</b><span>Players</span></div>`;
+}
+
+function drawDeckList() {
+  const searchText = $("deck-search").value.toLowerCase();
+  const minOnly = $("deck-min").checked;
+
+  const shown = decks.summary
+    .filter(deck => deck.name.toLowerCase().includes(searchText))
+    .filter(deck => !minOnly || deck.events >= 10)
+    .sort((a, b) => {
+      const first = a[deckSortBy];
+      const second = b[deckSortBy];
+      if (typeof first === "string") return first.localeCompare(second) * deckSortDirection;
+      return (first - second) * deckSortDirection;
+    });
+
+  let html = "";
+  for (const deck of shown) {
+    const selected = deck.name === selectedDeck ? "selected" : "";
+    html += `
+      <tr class="${selected}" data-name="${escapeHtml(deck.name)}">
+        <td>${escapeHtml(deck.name)}</td>
+        <td>${deck.events}</td>
+        <td>${percent(deck.winRate)}</td>
+        <td>${deck.wins}</td>
+        <td>${deck.players}</td>
+      </tr>`;
+  }
+  $("deck-list").innerHTML = html;
+}
+
+// The card showing who plays the selected deck
+function drawDeckCard() {
+  const card = $("deck-card");
+  const deck = decks.summary.find(d => d.name === selectedDeck);
+  if (!deck) { card.hidden = true; return; }
+  card.hidden = false;
+
+  const pilots = decks.entries
+    .filter(entry => entry.deck === deck.name)
+    .sort((a, b) => b.events - a.events);
+
+  let rows = "";
+  for (const pilot of pilots) {
+    rows += `<tr><td>${escapeHtml(canonicalName(pilot.player))}</td><td>${pilot.events}</td><td>${percent(pilot.winRate)}</td><td>${pilot.finishes}</td></tr>`;
+  }
+
+  card.innerHTML = `
+    <h2>${escapeHtml(deck.name)}</h2>
+    <div class="stats">
+      <div><b>${deck.events}</b><span>Events</span></div>
+      <div><b>${percent(deck.winRate)}</b><span>Win rate</span></div>
+      <div><b>${deck.wins}</b><span>4-0 wins</span></div>
+      <div><b>${deck.players}</b><span>Players</span></div>
+    </div>
+    <h3>Played by</h3>
+    <div class="table-wrap"><table class="mini static">
+      <thead><tr><th>Player</th><th>Events</th><th>Win %</th><th>4-0s</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+function drawDecks() {
+  drawDeckStats();
+  drawDeckList();
+  drawDeckCard();
+}
+
+// Shows either the Players or the Decks section, depending on the end of the web address
+function showTab() {
+  if (!$("decks-view")) return;
+  const tab = location.hash === "#decks" ? "decks" : "players";
+  $("players-view").hidden = tab !== "players";
+  $("decks-view").hidden = tab !== "decks";
+  document.querySelectorAll(".tabs a").forEach(link => {
+    link.classList.toggle("active", link.dataset.tab === tab);
+  });
+}
+
+
+// ---------- 6. REACTING TO THE VISITOR ----------
+
+// Typing in the search box
 $("search").addEventListener("input", drawLeaderboard);
 
-
-// Clicking a column heading sorts the table.
+// Clicking a column heading sorts by it. Clicking it again reverses the order.
 document.querySelector("thead").addEventListener("click", event => {
-  const column = event.target.dataset.sort;
-
+  const column = event.target.dataset.sort;                 // reads the data-sort="..." from the HTML
   if (!column) return;
-
   if (sortBy === column) {
     sortDirection = -sortDirection;
   } else {
     sortBy = column;
     sortDirection = (column === "rank" || column === "name") ? 1 : -1;
   }
-
   drawLeaderboard();
 });
 
-
-// Clicking a player row shows their season.
+// Clicking a player's row shows their season
 $("leaderboard").addEventListener("click", event => {
   const row = event.target.closest("tr");
-
   if (!row) return;
-
   selectedName = row.dataset.name;
-
   drawLeaderboard();
   drawPlayer();
-
-  $("player-card").scrollIntoView({
-    behavior: "smooth",
-    block: "nearest"
-  });
+  $("player-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
 });
 
 
-// ---------- 8. START ----------
+// Switching tabs: the browser tells us whenever the #something at the end of the address changes
+window.addEventListener("hashchange", showTab);
 
+// The decks tab: searching, the "10+ events" box, sorting, and clicking a deck
+$("deck-search")?.addEventListener("input", () => { if (decks) drawDeckList(); });
+$("deck-min")?.addEventListener("change", () => { if (decks) drawDeckList(); });
+
+$("deck-head")?.addEventListener("click", event => {
+  const column = event.target.dataset.sort;
+  if (!column) return;
+  if (deckSortBy === column) {
+    deckSortDirection = -deckSortDirection;
+  } else {
+    deckSortBy = column;
+    deckSortDirection = column === "name" ? 1 : -1;
+  }
+  drawDeckList();
+});
+
+$("deck-list")?.addEventListener("click", event => {
+  const row = event.target.closest("tr");
+  if (!row) return;
+  selectedDeck = row.dataset.name;
+  drawDeckList();
+  drawDeckCard();
+  $("deck-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
+
+// ---------- 7. START ----------
 async function start() {
+  showTab();
+  const decksRequest = loadDecks();     // starts now, so it loads at the same time as the main sheet
+
   try {
-    // Fetch the published spreadsheet.
-    const response = await fetch(SHEET_CSV_URL, {
-      cache: "no-store"
-    });
+    // Step 1: get the sheet. This is the only thing the visitor has to wait for.
+    const response = await fetch(SHEET_CSV_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error("the sheet returned error " + response.status);
+    season = buildSeason(parseCsv(await response.text()));
 
-    if (!response.ok) {
-      throw new Error("The sheet returned error " + response.status);
-    }
-
-    const csvText = await response.text();
-
-    if (!csvText.trim()) {
-      throw new Error("The published sheet returned an empty CSV.");
-    }
-
-    season = buildSeason(parseCsv(csvText));
-
-    // Display the page immediately using the saved Discord links.
+    // Step 2: show the page straight away, using the saved links
     season.links = backupLinks(season.dates.length);
-
     hideLoading();
     drawPage();
 
-    // Quietly fetch updated links and redraw the relevant sections.
-    const freshLinks = await fetchScriptLinks(season.dates.length);
+    // Step 3: add the deck data if we have it. Without it, the Decks tab simply stays hidden.
+    decks = await decksRequest;
+    if (decks) {
+      $("decks-tab").hidden = false;
+      drawDecks();
+      drawPlayer();                     // redraw so the selected player's decks appear
+    } else if (location.hash === "#decks") {
+      location.hash = "#players";
+    }
 
+    // Step 4: quietly ask the script for newer links, and redraw those parts if it has some
+    const freshLinks = await fetchScriptLinks(season.dates.length);
     if (freshLinks) {
       season.links = freshLinks;
       drawPlayer();
       drawWeeks();
     }
   } catch (error) {
-    console.error("Leaderboard load failed:", error);
-
     hideLoading();
-
-    const message = $("message");
-
-    if (message) {
-      message.hidden = false;
-      message.textContent =
-        "Couldn't load the sheet: " + error.message;
-    }
+    $("message").hidden = false;
+    $("message").textContent = "Couldn't load the sheet: " + error.message;
   }
 }
 
