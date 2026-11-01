@@ -87,7 +87,7 @@ const PLAYER_CARDS = {
   "Maia":                   "Pteromander",
   "Rory":                   "Conspicuous Snoop",
   "Cherie":                 "Faithful Watchdog",
-  "Jess Roslind";           "Nethergoyf",
+  "Jess Roslind":           "Nethergoyf",
   "Ruben":                  "Teferi, hero of dominaria",
   "Aaron Rubra":            "Barrowgoyf",
   "Jennifer Bytheway":      "Ornery Tumblewagg",
